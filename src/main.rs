@@ -1,3 +1,4 @@
+//TODO rewrite collision system
 extern crate ncurses;
 
 use ncurses::*;
@@ -104,6 +105,7 @@ impl Actor {
 				}
 			},
 			ActorType::Robot => {
+				let mut target_found = false;
 				let mut player_direction = Direction::None;
 				for act in actors.iter(){
 					match act.kind {
@@ -120,6 +122,7 @@ impl Actor {
 							}else{
 								player_direction = Direction::None;
 							}
+							target_found = true;
 						},
 						ActorType::Robot => {
 							player_direction = Direction::None;
@@ -128,7 +131,9 @@ impl Actor {
 							player_direction = Direction::None;
 						}
 					}
-					
+					if target_found {
+						break;
+					}
 				}
 				self.action=ActionType::Move(player_direction,1);
 			},
@@ -141,7 +146,7 @@ impl Actor {
 	fn try_action(&mut self) {
 		match &self.action {
 			ActionType::Move(direction,distance) => {
-				if *distance< 1 {
+				if *distance < 1 {
 					return;
 				}
 				match direction {
@@ -388,6 +393,16 @@ fn main() {
 		initutive:	127,
 		moveability:	0,
 	});
+	actors.push(Actor {
+		character:	71,
+		x:		6,
+		y:		5,
+		kind:		ActorType::Robot,
+		action:		ActionType::None,
+		alignment:	Alignment::Evil,
+		initutive:	127,
+		moveability:	1,
+	});
 
 	for i in 0..80 {
 		if (i%8) == 0 {
@@ -428,56 +443,8 @@ fn main() {
 				_ => {
 				}
 			}
-		}
-		for i in actors.iter_mut() {
 			i.try_action();	
 		}
-
-
-		loop {
-			let mut collision_list:Vec<(usize,usize)> = Vec::new();
-			let mut no_collision:bool = true;
-
-			for (ind1,act1) in actors.iter().enumerate() {
-				for (ind2,act2) in actors.iter().enumerate() {
-					if ind1==ind2 {
-						continue;
-					}
-					let mut exists:bool = false;
-
-					for collision in collision_list.iter(){
-						if collision.0 == ind2 && collision.1 == ind1 {
-							exists = true;
-							break;
-						}
-					}
-
-					if exists {
-						continue;
-					}
-					if check_collision(*act1,*act2) {
-						collision_list.push((ind1,ind2));
-						no_collision = false;
-					}
-					
-				}
-				
-			}
-			for act in actors.iter_mut() {
-				if world[(act.y as usize)*8+(act.x as usize)] == 35 {
-					act.undo_action();
-					no_collision = false;
-				}
-			}
-			if no_collision {
-				break;
-			}
-
-			for collision in collision_list{
-				resolve_collision((collision.0,collision.1),&mut actors,&world);
-			}
-		}
-
 
 		if let GlobalState::Done = game_state {
 			break;
