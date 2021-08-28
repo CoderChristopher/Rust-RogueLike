@@ -1,5 +1,5 @@
 [package]
-name = "nhello"
+name = "Rust-RL"
 version = "0.1.0"
 edition = "2018"
 
