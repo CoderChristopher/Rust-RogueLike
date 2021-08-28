@@ -352,6 +352,7 @@ fn main() {
 
 		//This probably a bad rustism, I should try and figure out a more elegant way to solve this ownership delema.
 		let immutable_actors = actors.clone();
+
 		let mut collision_list:Vec<(usize,usize,CollisionType)> = Vec::new();
 		
 		for (ind1,i) in actors.iter_mut().enumerate() {
