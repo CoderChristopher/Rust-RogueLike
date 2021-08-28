@@ -35,6 +35,14 @@ enum Alignment{
 	Neutral,
 	Evil,
 }
+enum CollisionType{
+	Actor,
+	World
+}
+enum Collision{
+	Collision(usize,CollisionType),
+	NoCollision
+}
 impl Copy for Direction {}
 impl Copy for Alignment {}
 impl Copy for ActionType {}
@@ -64,6 +72,10 @@ impl Clone for ActorType {
 	
 }
 
+struct WorldTile {
+	solid: bool,
+	tile: u32,
+}
 struct Actor {
 	character: u32,
 	x: i32,
@@ -143,24 +155,49 @@ impl Actor {
 
 		GlobalStateMod::None
 	}
-	fn try_action(&mut self) {
+	fn try_action(&mut self,actors: &Vec<Actor>,world: &Vec<WorldTile>) -> Collision {
 		match &self.action {
 			ActionType::Move(direction,distance) => {
-				if *distance < 1 {
-					return;
-				}
 				match direction {
 					Direction::Up => {
-						self.y-=*distance;
+						match check_collision_list(self.x,self.y-distance,actors,world){
+							Collision::NoCollision => {
+								self.y-=*distance;
+							},
+							Collision::Collision(index,ctype) => {
+								return	Collision::Collision(index,ctype);
+							}
+						}
 					},
 					Direction::Down => {
-						self.y+=*distance;
+						match check_collision_list(self.x,self.y+distance,actors,world){
+							Collision::NoCollision => {
+								self.y+=*distance;
+							},
+							Collision::Collision(index,ctype) => {
+								return	Collision::Collision(index,ctype);
+							}
+						}
 					},
 					Direction::Left => {
-						self.x-=*distance;
+						match check_collision_list(self.x-distance,self.y,actors,world){
+							Collision::NoCollision => {
+								self.x-=*distance;
+							},
+							Collision::Collision(index,ctype) => {
+								return	Collision::Collision(index,ctype);
+							}
+						}
 					},
 					Direction::Right => {
-						self.x+=*distance;
+						match check_collision_list(self.x+distance,self.y,actors,world){
+							Collision::NoCollision => {
+								self.x+=*distance;
+							},
+							Collision::Collision(index,ctype) => {
+								return	Collision::Collision(index,ctype);
+							}
+						}
 					},
 					Direction::None =>{
 					},
@@ -174,6 +211,7 @@ impl Actor {
 				
 			}
 		}
+		Collision::NoCollision
 	}
 	fn undo_action(&mut self) {
 		match &self.action {
@@ -207,138 +245,6 @@ impl Actor {
 			}
 		}
 	}
-	fn push_around(&mut self,world: &Vec<u32>) {
-		match &self.action {
-			ActionType::Move(direction,distance) => {
-				if *distance< 1 {
-					return;
-				}
-				match direction {
-					Direction::Up => {
-						self.y+=*distance;
-					},
-					Direction::Down => {
-						self.y-=*distance;
-					},
-					Direction::Left => {
-						self.x+=*distance;
-					},
-					Direction::Right => {
-						self.x-=*distance;
-					},
-					Direction::None =>{
-						loop {
-							let mut found:bool = false;
-							match rand::thread_rng().gen_range(0..4){
-								0 => {
-									if world[((self.y as usize))*8+((self.x as usize)-1)] != 35 {
-										self.x-=*distance;
-										found=true;
-									}
-								},
-								1 => {
-									if world[((self.y as usize))*8+((self.x as usize)+1)] != 35 {
-										self.x+=*distance;
-										found=true;
-									}
-								},
-								2 => {
-									if world[((self.y as usize)-1)*8+((self.x as usize))] != 35 {
-										self.y-=*distance;
-										found=true;
-									}
-								},
-								3 => {
-									if world[((self.y as usize)+1)*8+((self.x as usize))] != 35 {
-										self.y+=*distance;
-										found=true;
-									}
-								},
-								_ => {
-								},
-							}
-							if found {
-								break;
-							}
-						}
-					},
-				}
-				
-			},
-			ActionType::Stand => {
-				loop {
-					let mut found:bool = false;
-					match rand::thread_rng().gen_range(0..4){
-						0 => {
-							if world[((self.y as usize))*8+((self.x as usize)-1)] != 35 {
-								self.x-=1;
-								found=true;
-							}
-						},
-						1 => {
-							if world[((self.y as usize))*8+((self.x as usize)+1)] != 35 {
-								self.x+=1;
-								found=true;
-							}
-						},
-						2 => {
-							if world[((self.y as usize)-1)*8+((self.x as usize))] != 35 {
-								self.y-=1;
-								found=true;
-							}
-						},
-						3 => {
-							if world[((self.y as usize)+1)*8+((self.x as usize))] != 35 {
-								self.y+=1;
-								found=true;
-							}
-						},
-						_ => {
-						},
-					}
-					if found {
-						break;
-					}
-				}
-			},
-			ActionType::None => {
-				loop {
-					let mut found:bool = false;
-					match rand::thread_rng().gen_range(0..4){
-						0 => {
-							if world[((self.y as usize))*8+((self.x as usize)-1)] != 35 {
-								self.x-=1;
-								found=true;
-							}
-						},
-						1 => {
-							if world[((self.y as usize))*8+((self.x as usize)+1)] != 35 {
-								self.x+=1;
-								found=true;
-							}
-						},
-						2 => {
-							if world[((self.y as usize)-1)*8+((self.x as usize))] != 35 {
-								self.y-=1;
-								found=true;
-							}
-						},
-						3 => {
-							if world[((self.y as usize)+1)*8+((self.x as usize))] != 35 {
-								self.y+=1;
-								found=true;
-							}
-						},
-						_ => {
-						},
-					}
-					if found {
-						break;
-					}
-				}
-			}
-		}
-	}
 }
 impl Copy for Actor {}
 impl Clone for Actor {
@@ -348,21 +254,18 @@ impl Clone for Actor {
 	
 }
 
-fn check_collision(act1: Actor,act2: Actor) -> bool {
-	if act1.x==act2.x&&act1.y==act2.y {
-		return true;
+fn check_collision_list(x: i32, y:i32,actors: &Vec<Actor>,world: &Vec<WorldTile>) -> Collision {
+	for (ind,actor) in actors.iter().enumerate() {
+		if actor.x==x&&actor.y==y {
+			return Collision::Collision(ind,CollisionType::Actor);
+		}
 	}
-	false
-}
-
-fn resolve_collision(indexes: (usize,usize), actor_list: &mut Vec<Actor>,world: &Vec<u32>){
-	if actor_list[indexes.0].moveability > actor_list[indexes.1].moveability{
-		actor_list[indexes.0].push_around(&world);
-	}else if actor_list[indexes.0].moveability < actor_list[indexes.1].moveability{
-		actor_list[indexes.1].push_around(&world);
-	}else{
-		actor_list[indexes.1].push_around(&world);
+	for (ind,tile) in world.iter().enumerate() {
+		if ( (ind as i32)%8) == x && ((ind as i32)/8) == y && tile.solid{
+			return Collision::Collision(ind,CollisionType::Actor);
+		}
 	}
+	Collision::NoCollision
 }
 
 fn main() {
@@ -370,7 +273,7 @@ fn main() {
 	initscr();
 	noecho();
 
-	let mut world:  Vec<u32> = Vec::new();
+	let mut world:  Vec<WorldTile> = Vec::new();
 	let mut actors: Vec<Actor> = Vec::new();
 
 	actors.push(Actor {
@@ -406,15 +309,30 @@ fn main() {
 
 	for i in 0..80 {
 		if (i%8) == 0 {
-			world.push(35);
+			world.push({ WorldTile {
+				solid: true,
+				tile: 35
+			}});
 		}else if (i+1)%8 == 0{
-			world.push(35);
+			world.push({ WorldTile {
+				solid: true,
+				tile: 35
+			}});
 		}else if i<9 {
-			world.push(35);
+			world.push({ WorldTile {
+				solid: true,
+				tile: 35
+			}});
 		}else if i>70 {
-			world.push(35);
+			world.push({ WorldTile {
+				solid: true,
+				tile: 35
+			}});
 		}else{
-			world.push(46);
+			world.push({ WorldTile {
+				solid: false,
+				tile: 46
+			} } );
 		}
 	}
 
@@ -423,7 +341,7 @@ fn main() {
 
 		for (i,tile) in world.iter().enumerate() {
 			let j:i32 = i as i32;
-			mvaddch(j/8,j%8,*tile);
+			mvaddch(j/8,j%8,tile.tile);
 		}
 
 		for i in actors.iter() {
@@ -432,9 +350,11 @@ fn main() {
 		mv(10,0);
 		refresh();
 
+		//This probably a bad rustism, I should try and figure out a more elegant way to solve this ownership delema.
 		let immutable_actors = actors.clone();
+		let mut collision_list:Vec<(usize,usize,CollisionType)> = Vec::new();
 		
-		for i in actors.iter_mut() {
+		for (ind1,i) in actors.iter_mut().enumerate() {
 			match i.decide_action(&immutable_actors){
 				GlobalStateMod::Quit => {
 					game_state = GlobalState::Done;
@@ -443,7 +363,14 @@ fn main() {
 				_ => {
 				}
 			}
-			i.try_action();	
+			match i.try_action(&immutable_actors,&world){
+				Collision::Collision(ind2,ctype) => {
+					//Implement Code that Runs Through the Collision list and resolves collisions
+					collision_list.push((ind1,ind2,ctype));	
+				},
+				Collision::NoCollision =>{
+				}
+			}
 		}
 
 		if let GlobalState::Done = game_state {
