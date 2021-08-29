@@ -19,6 +19,10 @@ enum Direction{
 	Right,
 	None
 }
+enum TileType{
+	Wall,
+	Ground
+}
 enum ActorType{
 	Player,
 	Robot,
@@ -74,7 +78,9 @@ impl Clone for ActorType {
 
 struct WorldTile {
 	solid: bool,
-	tile: u32,
+	tile: TileType,
+	x: i32,
+	y: i32,
 }
 struct Actor {
 	character: u32,
@@ -85,133 +91,14 @@ struct Actor {
 	alignment: Alignment,
 	initutive: u8,
 	moveability: u8,
+	health: u8,
+	attack: u8,
+	defense: u8,
 }
 
 impl Actor {
 	fn draw(&self) {
 		mvaddch(self.y,self.x,self.character);
-	}
-	fn decide_action(&mut self,actors: &Vec<Actor>) -> GlobalStateMod {
-		self.action=ActionType::None;
-		match self.kind {
-			ActorType::Player => {
-				let ch=getch();
-				match ch {
-					113 => {
-						return GlobalStateMod::Quit;
-					},
-					104 => {
-						self.action=ActionType::Move(Direction::Left,1);
-					},
-					106 => {
-						self.action=ActionType::Move(Direction::Down,1);
-					},
-					107 => {
-						self.action=ActionType::Move(Direction::Up,1);
-					},
-					108 => {
-						self.action=ActionType::Move(Direction::Right,1);
-					},
-					_ => {
-					}
-				}
-			},
-			ActorType::Robot => {
-				let mut target_found = false;
-				let mut player_direction = Direction::None;
-				for act in actors.iter(){
-					match act.kind {
-						ActorType::Player => {
-
-							if act.x > self.x {
-								player_direction = Direction::Right;
-							}else if act.x < self.x {
-								player_direction = Direction::Left;
-							}else if act.y > self.y {
-								player_direction = Direction::Down;
-							}else if act.y < self.y {
-								player_direction = Direction::Up;
-							}else{
-								player_direction = Direction::None;
-							}
-							target_found = true;
-						},
-						ActorType::Robot => {
-							player_direction = Direction::None;
-						},
-						ActorType::Passive => {
-							player_direction = Direction::None;
-						}
-					}
-					if target_found {
-						break;
-					}
-				}
-				self.action=ActionType::Move(player_direction,1);
-			},
-			ActorType::Passive => {
-			}
-		}
-
-		GlobalStateMod::None
-	}
-	fn try_action(&mut self,actors: &Vec<Actor>,world: &Vec<WorldTile>) -> Collision {
-		match &self.action {
-			ActionType::Move(direction,distance) => {
-				match direction {
-					Direction::Up => {
-						match check_collision_list(self.x,self.y-distance,actors,world){
-							Collision::NoCollision => {
-								self.y-=*distance;
-							},
-							Collision::Collision(index,ctype) => {
-								return	Collision::Collision(index,ctype);
-							}
-						}
-					},
-					Direction::Down => {
-						match check_collision_list(self.x,self.y+distance,actors,world){
-							Collision::NoCollision => {
-								self.y+=*distance;
-							},
-							Collision::Collision(index,ctype) => {
-								return	Collision::Collision(index,ctype);
-							}
-						}
-					},
-					Direction::Left => {
-						match check_collision_list(self.x-distance,self.y,actors,world){
-							Collision::NoCollision => {
-								self.x-=*distance;
-							},
-							Collision::Collision(index,ctype) => {
-								return	Collision::Collision(index,ctype);
-							}
-						}
-					},
-					Direction::Right => {
-						match check_collision_list(self.x+distance,self.y,actors,world){
-							Collision::NoCollision => {
-								self.x+=*distance;
-							},
-							Collision::Collision(index,ctype) => {
-								return	Collision::Collision(index,ctype);
-							}
-						}
-					},
-					Direction::None =>{
-					},
-				}
-				
-			},
-			ActionType::Stand => {
-
-			},
-			ActionType::None => {
-				
-			}
-		}
-		Collision::NoCollision
 	}
 	fn undo_action(&mut self) {
 		match &self.action {
@@ -262,7 +149,130 @@ fn check_collision_list(x: i32, y:i32,actors: &Vec<Actor>,world: &Vec<WorldTile>
 	}
 	for (ind,tile) in world.iter().enumerate() {
 		if ( (ind as i32)%8) == x && ((ind as i32)/8) == y && tile.solid{
-			return Collision::Collision(ind,CollisionType::Actor);
+			return Collision::Collision(ind,CollisionType::World);
+		}
+	}
+	Collision::NoCollision
+}
+
+fn decide_action(index: usize,actors: &mut Vec<Actor>) -> GlobalStateMod {
+	actors[index].action=ActionType::None;
+	match actors[index].kind {
+		ActorType::Player => {
+			let ch=getch();
+			match ch {
+				113 => {
+					return GlobalStateMod::Quit;
+				},
+				104 => {
+					actors[index].action=ActionType::Move(Direction::Left,1);
+				},
+				106 => {
+					actors[index].action=ActionType::Move(Direction::Down,1);
+				},
+				107 => {
+					actors[index].action=ActionType::Move(Direction::Up,1);
+				},
+				108 => {
+					actors[index].action=ActionType::Move(Direction::Right,1);
+				},
+				_ => {
+				}
+			}
+		},
+		ActorType::Robot => {
+			let mut target_found = false;
+			let mut player_direction = Direction::None;
+			for act in actors.iter(){
+				match act.kind {
+					ActorType::Player => {
+
+						if act.x > actors[index].x {
+							player_direction = Direction::Right;
+						}else if act.x < actors[index].x {
+							player_direction = Direction::Left;
+						}else if act.y > actors[index].y {
+							player_direction = Direction::Down;
+						}else if act.y < actors[index].y {
+							player_direction = Direction::Up;
+						}else{
+							player_direction = Direction::None;
+						}
+						target_found = true;
+					},
+					ActorType::Robot => {
+						player_direction = Direction::None;
+					},
+					ActorType::Passive => {
+						player_direction = Direction::None;
+					}
+				}
+				if target_found {
+					break;
+				}
+			}
+			actors[index].action=ActionType::Move(player_direction,1);
+		},
+		ActorType::Passive => {
+		}
+	}
+
+	GlobalStateMod::None
+}
+fn try_action(index: usize,actors: &mut Vec<Actor>,world: &mut Vec<WorldTile>) -> Collision {
+	match actors[index].action {
+		ActionType::Move(direction,distance) => {
+			match direction {
+				Direction::Up => {
+					match check_collision_list(actors[index].x,actors[index].y-distance,actors,world){
+						Collision::NoCollision => {
+							actors[index].y-=distance;
+						},
+						Collision::Collision(index,ctype) => {
+							return	Collision::Collision(index,ctype);
+						}
+					}
+				},
+				Direction::Down => {
+					match check_collision_list(actors[index].x,actors[index].y+distance,actors,world){
+						Collision::NoCollision => {
+							actors[index].y+=distance;
+						},
+						Collision::Collision(index,ctype) => {
+							return	Collision::Collision(index,ctype);
+						}
+					}
+				},
+				Direction::Left => {
+					match check_collision_list(actors[index].x-distance,actors[index].y,actors,world){
+						Collision::NoCollision => {
+							actors[index].x-=distance;
+						},
+						Collision::Collision(index,ctype) => {
+							return	Collision::Collision(index,ctype);
+						}
+					}
+				},
+				Direction::Right => {
+					match check_collision_list(actors[index].x+distance,actors[index].y,actors,world){
+						Collision::NoCollision => {
+							actors[index].x+=distance;
+						},
+						Collision::Collision(index,ctype) => {
+							return	Collision::Collision(index,ctype);
+						}
+					}
+				},
+				Direction::None =>{
+				},
+			}
+			
+		},
+		ActionType::Stand => {
+
+		},
+		ActionType::None => {
+			
 		}
 	}
 	Collision::NoCollision
@@ -275,6 +285,7 @@ fn main() {
 
 	let mut world:  Vec<WorldTile> = Vec::new();
 	let mut actors: Vec<Actor> = Vec::new();
+	let mut debug_messages: Vec<String> = Vec::new();
 
 	actors.push(Actor {
 		character:	71,
@@ -285,6 +296,10 @@ fn main() {
 		alignment:	Alignment::Evil,
 		initutive:	128,
 		moveability:	1,
+		health:		5,
+		attack:		1,
+		defense:	0,
+
 	});
 	actors.push(Actor {
 		character:	64,
@@ -295,6 +310,9 @@ fn main() {
 		alignment:	Alignment::Good,
 		initutive:	127,
 		moveability:	0,
+		health:		5,
+		attack:		1,
+		defense:	0,
 	});
 	actors.push(Actor {
 		character:	71,
@@ -305,58 +323,79 @@ fn main() {
 		alignment:	Alignment::Evil,
 		initutive:	127,
 		moveability:	1,
+		health:		5,
+		attack:		1,
+		defense:	0,
 	});
 
 	for i in 0..80 {
 		if (i%8) == 0 {
 			world.push({ WorldTile {
 				solid: true,
-				tile: 35
+				tile: TileType::Wall,
+				x: (i as i32)%8,
+				y: (i as i32)/8,
 			}});
 		}else if (i+1)%8 == 0{
 			world.push({ WorldTile {
 				solid: true,
-				tile: 35
+				tile: TileType::Wall,
+				x: (i as i32)%8,
+				y: (i as i32)/8,
 			}});
 		}else if i<9 {
 			world.push({ WorldTile {
 				solid: true,
-				tile: 35
+				tile: TileType::Wall,
+				x: (i as i32)%8,
+				y: (i as i32)/8,
 			}});
 		}else if i>70 {
 			world.push({ WorldTile {
 				solid: true,
-				tile: 35
+				tile: TileType::Wall,
+				x: (i as i32)%8,
+				y: (i as i32)/8,
 			}});
 		}else{
 			world.push({ WorldTile {
 				solid: false,
-				tile: 46
-			} } );
+				tile: TileType::Ground,
+				x: (i as i32)%8,
+				y: (i as i32)/8,
+			}});
 		}
 	}
 
 	loop {
 		erase();
 
-		for (i,tile) in world.iter().enumerate() {
-			let j:i32 = i as i32;
-			mvaddch(j/8,j%8,tile.tile);
+		for tile in world.iter() {
+			match tile.tile {
+				TileType::Wall => {
+					mvaddch(tile.y,tile.x,35);
+				},
+				TileType::Ground => {
+					mvaddch(tile.y,tile.x,45);
+				}
+			}
 		}
 
 		for i in actors.iter() {
 			i.draw();
 		}
+		for (ind,i) in debug_messages.iter().enumerate() {
+			mvaddstr(0+(ind as i32),10,i);
+		}
 		mv(10,0);
 		refresh();
 
 		//This probably a bad rustism, I should try and figure out a more elegant way to solve this ownership delema.
-		let immutable_actors = actors.clone();
 
 		let mut collision_list:Vec<(usize,usize,CollisionType)> = Vec::new();
 		
-		for (ind1,i) in actors.iter_mut().enumerate() {
-			match i.decide_action(&immutable_actors){
+		for ind1 in 0..actors.len() {
+			match decide_action(ind1,&mut actors){
 				GlobalStateMod::Quit => {
 					game_state = GlobalState::Done;
 					break;
@@ -364,7 +403,7 @@ fn main() {
 				_ => {
 				}
 			}
-			match i.try_action(&immutable_actors,&world){
+			match try_action(ind1,&mut actors,&mut world){
 				Collision::Collision(ind2,ctype) => {
 					//Implement Code that Runs Through the Collision list and resolves collisions
 					collision_list.push((ind1,ind2,ctype));	
@@ -372,6 +411,44 @@ fn main() {
 				Collision::NoCollision =>{
 				}
 			}
+		}
+		
+		while collision_list.len() > 0 {
+			//Right now just cull the list of world tile collisions, perhaps in the future I will come up with more complex behavior for these objects...
+			for mut i in 0..collision_list.len() {
+				match collision_list[i].2 {
+					CollisionType::World => {
+						collision_list.remove(i);
+						i-=1;
+						continue;
+					},
+					CollisionType::Actor => {
+					}
+				}
+				
+			}
+			for mut i in 0..collision_list.len() {
+				if(actors[collision_list[i].0].health>0){
+					actors[collision_list[i].0].health -= actors[collision_list[i].1].attack;
+				}
+				collision_list.remove(i);	
+				i -= 1;
+			}
+		}
+
+		for tup in collision_list {
+			match tup.2 {
+				CollisionType::World => {
+					debug_messages.push(format!("Collision between World {} and {}.",tup.0,tup.1));
+				},
+				CollisionType::Actor => {
+					debug_messages.push(format!("Collision between Actors {} and {}.",tup.0,tup.1));
+				}
+			}
+		}
+
+		while debug_messages.len()>5 {
+			debug_messages.remove(0);
 		}
 
 		if let GlobalState::Done = game_state {
