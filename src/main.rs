@@ -390,8 +390,6 @@ fn main() {
 		mv(10,0);
 		refresh();
 
-		//This probably a bad rustism, I should try and figure out a more elegant way to solve this ownership delema.
-
 		let mut collision_list:Vec<(usize,usize,CollisionType)> = Vec::new();
 		
 		for ind1 in 0..actors.len() {
@@ -405,47 +403,84 @@ fn main() {
 			}
 			match try_action(ind1,&mut actors,&mut world){
 				Collision::Collision(ind2,ctype) => {
-					//Implement Code that Runs Through the Collision list and resolves collisions
 					collision_list.push((ind1,ind2,ctype));	
 				},
 				Collision::NoCollision =>{
 				}
 			}
 		}
+
+		loop {
+			let mut clean = true;
+			for ind1 in 0..actors.len() {
+				match check_collision_list(actors[ind1].x,actors[ind1].y,&actors,&world){
+					Collision::Collision(ind2,ctype) => {
+						if(ind1 == ind2){
+							continue;
+						}
+						match ctype {
+							CollisionType::Actor => {
+								if(actors[ind1].moveability>actors[ind2].moveability){
+									actors[ind1].undo_action();
+								}else if(actors[ind1].moveability<actors[ind2].moveability){
+									actors[ind2].undo_action();
+								}else{
+									actors[ind1].undo_action();
+									actors[ind2].undo_action();
+								}
+								clean = false;
+							},
+							_ => {}
+						}
+					},
+					Collision::NoCollision => {
+					}
+				
+				}
+			}
+			if clean {
+				break;
+			}
+		}
 		
 		while collision_list.len() > 0 {
-			//Right now just cull the list of world tile collisions, perhaps in the future I will come up with more complex behavior for these objects...
-			for mut i in 0..collision_list.len() {
-				match collision_list[i].2 {
-					CollisionType::World => {
-						collision_list.remove(i);
-						i-=1;
+			match collision_list[0].2 {
+				CollisionType::Actor => {
+					if actors[collision_list[0].0].health == 0 || actors[collision_list[0].1].health == 0 {
+						collision_list.remove(0);
 						continue;
-					},
-					CollisionType::Actor => {
 					}
+					if actors[collision_list[0].0].health>0 {
+						actors[collision_list[0].0].health -= actors[collision_list[0].1].attack;
+					}
+					debug_messages.push(format!("Collision between World {} and {}. New Halths:{} and {}",collision_list[0].0,collision_list[0].1,actors[collision_list[0].0].health,actors[collision_list[0].1].health));
+					collision_list.remove(0);	
+				},
+				CollisionType::World => {
+					debug_messages.push(format!("Collision between Actors {} and {}.",collision_list[0].0,collision_list[0].1));
+					collision_list.remove(0);
 				}
-				
 			}
-			for mut i in 0..collision_list.len() {
-				if(actors[collision_list[i].0].health>0){
-					actors[collision_list[i].0].health -= actors[collision_list[i].1].attack;
+		}
+		
+
+		loop {
+			let mut clean = true;
+
+			for i in 0..actors.len() {
+				if actors[i].health == 0 {
+					actors.remove(i);
+					clean = false;
+					break;
 				}
-				collision_list.remove(i);	
-				i -= 1;
+					
+			}
+			
+			if clean {
+				break;
 			}
 		}
 
-		for tup in collision_list {
-			match tup.2 {
-				CollisionType::World => {
-					debug_messages.push(format!("Collision between World {} and {}.",tup.0,tup.1));
-				},
-				CollisionType::Actor => {
-					debug_messages.push(format!("Collision between Actors {} and {}.",tup.0,tup.1));
-				}
-			}
-		}
 
 		while debug_messages.len()>5 {
 			debug_messages.remove(0);
