@@ -3,6 +3,14 @@
 version = 3
 
 [[package]]
+name = "Rust-RL"
+version = "0.1.0"
+dependencies = [
+ "ncurses",
+ "rand",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -40,14 +48,6 @@ dependencies = [
  "cc",
  "libc",
  "pkg-config",
-]
-
-[[package]]
-name = "nhello"
-version = "0.1.0"
-dependencies = [
- "ncurses",
- "rand",
 ]
 
 [[package]]
