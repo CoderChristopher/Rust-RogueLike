@@ -21,18 +21,25 @@ enum Direction {
 enum TileType {
     Wall,
     Ground,
-    ClosedDoor,
-    OpenedDoor,
+    ClosedDoor(usize, bool),
+    OpenedDoor(usize, bool),
+}
+enum SystemType {
+    Computer,
+    PhysicalLock,
+    BioMetricLock,
 }
 enum ActorType {
     Player,
     Robot,
     //Projectile,
     Passive,
+    System(usize, SystemType),
 }
 enum ActionType {
     Move(Direction, i32),
     Open(Direction),
+    Disarm(Direction),
     Stand,
     None,
 }
@@ -53,6 +60,7 @@ impl Copy for Direction {}
 impl Copy for Alignment {}
 impl Copy for ActionType {}
 impl Copy for ActorType {}
+impl Copy for SystemType {}
 impl Clone for Direction {
     fn clone(&self) -> Direction {
         *self
@@ -73,7 +81,16 @@ impl Clone for ActorType {
         *self
     }
 }
+impl Clone for SystemType {
+    fn clone(&self) -> SystemType {
+        *self
+    }
+}
 
+struct Controller {
+    engaged: bool,
+    guid: usize,
+}
 struct WorldTile {
     tile: TileType,
     x: i32,
@@ -119,8 +136,8 @@ impl Actor {
                     Direction::None => {}
                 }
             }
-	    ActionType::Open(_) => {
-	    }
+            ActionType::Open(_) => {}
+            ActionType::Disarm(_) => {}
             ActionType::Stand => {}
             ActionType::None => {}
         }
@@ -147,49 +164,145 @@ fn check_collision_list(x: i32, y: i32, actors: &Vec<Actor>, world: &Vec<WorldTi
     Collision::NoCollision
 }
 
-fn check_world_tile_list(x: i32, y: i32, world: &Vec<WorldTile> ) -> Collision {
-    for (ind, tile) in world.iter().enumerate() {
-        if (tile.x) == x && (tile.y == y)  {
-            return Collision::Collision(ind, CollisionType::World);
+fn check_actor_list(x: i32, y: i32, actors: &Vec<Actor>) -> Collision {
+    for (index, actor) in actors.iter().enumerate() {
+        if (actor.x) == x && (actor.y == y) {
+            return Collision::Collision(index, CollisionType::Actor);
         }
     }
     Collision::NoCollision
 }
-
+fn check_world_tile_list(x: i32, y: i32, world: &Vec<WorldTile>) -> Collision {
+    for (index, tile) in world.iter().enumerate() {
+        if (tile.x) == x && (tile.y == y) {
+            return Collision::Collision(index, CollisionType::World);
+        }
+    }
+    Collision::NoCollision
+}
 fn world_tile_is_solid(world_tile_type: &TileType) -> bool {
-	match world_tile_type {
-		TileType::Wall => {
-			return true;
-		}
-		TileType::ClosedDoor => {
-			return true;
-		}
-		TileType::OpenedDoor => {
-			return false;
-		}
-		TileType::Ground => {
-			return false;
-		}
-	}
-	false
+    match world_tile_type {
+        TileType::Wall => {
+            return true;
+        }
+        TileType::ClosedDoor(_, _) => {
+            return true;
+        }
+        TileType::OpenedDoor(_, _) => {
+            return false;
+        }
+        TileType::Ground => {
+            return false;
+        }
+    }
+    false
+}
+fn controller_disengage(guid: usize, controllers: &mut Vec<Controller>) {
+    for control in controllers.iter_mut() {
+        if control.guid == guid {
+            control.engaged = false;
+            return;
+        }
+    }
+}
+fn actors_disarm(system: &mut Actor, controllers: &mut Vec<Controller>) -> (bool, String) {
+    match system.kind {
+        ActorType::System(guid, system_type) => {
+            controller_disengage(guid, controllers);
+            return (true, String::from("Disarmed the system!"));
+        }
+        _ => {
+            return (false, String::from("Cannot disarm that!"));
+        }
+    }
+}
+fn world_tile_toggle_door(
+    world_tile: &mut WorldTile,
+    controllers: &Vec<Controller>,
+) -> (bool, String) {
+    match world_tile.tile {
+        TileType::Wall | TileType::Ground => {
+            return (false, String::from("Cannot open tile of this type!"));
+        }
+        TileType::OpenedDoor(index, being_controlled) => {
+            if being_controlled {
+                match controller_is_engaged(index, controllers) {
+                    false => {
+                        world_tile.tile = TileType::ClosedDoor(index, being_controlled);
+                        return (true, String::from("Closed a door."));
+                    }
+                    true => {
+                        return (true, String::from("Door is locked"));
+                    }
+                }
+            } else {
+                world_tile.tile = TileType::ClosedDoor(index, being_controlled);
+                return (true, String::from("Closed a door."));
+            }
+        }
+        TileType::ClosedDoor(index, being_controlled) => {
+            if being_controlled {
+                match controller_is_engaged(index, controllers) {
+                    false => {
+                        world_tile.tile = TileType::OpenedDoor(index, being_controlled);
+                        return (true, String::from("Opened a door."));
+                    }
+                    true => {
+                        return (true, String::from("Door is locked"));
+                    }
+                }
+            } else {
+                world_tile.tile = TileType::OpenedDoor(index, being_controlled);
+                return (true, String::from("Opened a door."));
+            }
+        }
+    }
 }
 
-fn world_tile_toggle_door(world_tile: &mut WorldTile) -> (bool,&str){
-	match world_tile.tile {
-		TileType::Wall | TileType::Ground => {
-			return (false, "Cannot open tile of this type!");
-		}
-		TileType::OpenedDoor => {
-			world_tile.tile = TileType::ClosedDoor;
-			return (true, "Closed a door.");
-		}
-		TileType::ClosedDoor => {
-			world_tile.tile = TileType::OpenedDoor;
-			return (true, "Opened a door.");
-		}
-	}
-}
+fn controller_is_engaged(guid: usize, controllers: &Vec<Controller>) -> bool {
+    let mut controller_index: Option<usize> = None;
+    if guid < controllers.len() {
+        if controllers[guid].guid == guid {
+            controller_index = Some(guid);
+        } else {
+            for (index, controller) in controllers.iter().enumerate() {
+                if controller.guid == guid {
+                    controller_index = Some(index);
+                    break;
+                }
+            }
+        }
+    } else {
+        for (index, controller) in controllers.iter().enumerate() {
+            if controller.guid == guid {
+                controller_index = Some(index);
+                break;
+            }
+        }
+    }
 
+    match controller_index {
+        Some(index) => controllers[index].engaged,
+        None => false,
+    }
+}
+fn controller_new_guid(controllers: &Vec<Controller>) -> usize {
+    let mut guid: usize = controllers.len();
+    loop {
+        let mut found = false;
+        for control in controllers.iter() {
+            if guid == control.guid {
+                guid += 1;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            break;
+        }
+    }
+    guid
+}
 
 fn decide_action(index: usize, actors: &mut Vec<Actor>) -> GlobalStateMod {
     actors[index].action = ActionType::None;
@@ -230,6 +343,24 @@ fn decide_action(index: usize, actors: &mut Vec<Actor>) -> GlobalStateMod {
                         _ => {}
                     }
                 }
+                100 => {
+                    let secondary_action = getch();
+                    match secondary_action {
+                        104 => {
+                            actors[index].action = ActionType::Disarm(Direction::Left);
+                        }
+                        106 => {
+                            actors[index].action = ActionType::Disarm(Direction::Down);
+                        }
+                        107 => {
+                            actors[index].action = ActionType::Disarm(Direction::Up);
+                        }
+                        108 => {
+                            actors[index].action = ActionType::Disarm(Direction::Right);
+                        }
+                        _ => {}
+                    }
+                }
                 _ => {}
             }
         }
@@ -251,22 +382,25 @@ fn decide_action(index: usize, actors: &mut Vec<Actor>) -> GlobalStateMod {
                         }
                         break;
                     }
-                    ActorType::Robot => {
-                        player_direction = Direction::None;
-                    }
-                    ActorType::Passive => {
+                    _ => {
                         player_direction = Direction::None;
                     }
                 }
             }
             actors[index].action = ActionType::Move(player_direction, 1);
         }
-        ActorType::Passive => {}
+        _ => {}
     }
 
     GlobalStateMod::None
 }
-fn try_action(index: usize, actors: &mut Vec<Actor>, world: &mut Vec<WorldTile>,debug_messages: &mut Vec<String>) -> Collision {
+fn try_action(
+    index: usize,
+    actors: &mut Vec<Actor>,
+    world: &mut Vec<WorldTile>,
+    controllers: &mut Vec<Controller>,
+    debug_messages: &mut Vec<String>,
+) -> Collision {
     match actors[index].action {
         ActionType::Move(direction, distance) => match direction {
             Direction::Up => {
@@ -331,51 +465,69 @@ fn try_action(index: usize, actors: &mut Vec<Actor>, world: &mut Vec<WorldTile>,
             }
             Direction::None => {}
         },
-	ActionType::Open(direction) => {
-		match direction {
-			Direction::Left => {
-				match check_world_tile_list(actors[index].x - 1,actors[index].y,world) {
-					Collision::NoCollision => {
-						return Collision::NoCollision;
-					}
-					Collision::Collision(index, ctype) => {
-						debug_messages.push(world_tile_toggle_door(&mut world[index]).1.to_string());
-					}
-				}
-			}
-			Direction::Right => {
-				match check_world_tile_list(actors[index].x + 1,actors[index].y,world) {
-					Collision::NoCollision => {
-						return Collision::NoCollision;
-					}
-					Collision::Collision(index, ctype) => {
-						debug_messages.push(world_tile_toggle_door(&mut world[index]).1.to_string());
-					}
-				}
-			}
-			Direction::Up => {
-				match check_world_tile_list(actors[index].x ,actors[index].y - 1,world) {
-					Collision::NoCollision => {
-						return Collision::NoCollision;
-					}
-					Collision::Collision(index, ctype) => {
-						debug_messages.push(world_tile_toggle_door(&mut world[index]).1.to_string());
-					}
-				}
-			}
-			Direction::Down => {
-				match check_world_tile_list(actors[index].x ,actors[index].y + 1,world) {
-					Collision::NoCollision => {
-						return Collision::NoCollision;
-					}
-					Collision::Collision(index, ctype) => {
-						debug_messages.push(world_tile_toggle_door(&mut world[index]).1.to_string());
-					}
-				}
-			}
-			Direction::None => {}
-		}
-	}
+        ActionType::Open(direction) => match direction {
+            Direction::Left => {
+                match check_world_tile_list(actors[index].x - 1, actors[index].y, world) {
+                    Collision::NoCollision => {
+                        return Collision::NoCollision;
+                    }
+                    Collision::Collision(index, _) => {
+                        debug_messages
+                            .push(world_tile_toggle_door(&mut world[index], controllers).1);
+                    }
+                }
+            }
+            Direction::Right => {
+                match check_world_tile_list(actors[index].x + 1, actors[index].y, world) {
+                    Collision::NoCollision => {
+                        return Collision::NoCollision;
+                    }
+                    Collision::Collision(index, _) => {
+                        debug_messages
+                            .push(world_tile_toggle_door(&mut world[index], controllers).1);
+                    }
+                }
+            }
+            Direction::Up => {
+                match check_world_tile_list(actors[index].x, actors[index].y - 1, world) {
+                    Collision::NoCollision => {
+                        return Collision::NoCollision;
+                    }
+                    Collision::Collision(index, _) => {
+                        debug_messages
+                            .push(world_tile_toggle_door(&mut world[index], controllers).1);
+                    }
+                }
+            }
+            Direction::Down => {
+                match check_world_tile_list(actors[index].x, actors[index].y + 1, world) {
+                    Collision::NoCollision => {
+                        return Collision::NoCollision;
+                    }
+                    Collision::Collision(index, _) => {
+                        debug_messages
+                            .push(world_tile_toggle_door(&mut world[index], controllers).1);
+                    }
+                }
+            }
+            Direction::None => {}
+        },
+        ActionType::Disarm(direction) => match direction {
+            Direction::Left => {
+                match check_actor_list(actors[index].x - 1, actors[index].y, actors) {
+                    Collision::NoCollision => {
+                        return Collision::NoCollision;
+                    }
+                    Collision::Collision(index, _) => {
+                        debug_messages.push(actors_disarm(&mut actors[index], controllers).1);
+                    }
+                }
+            }
+            Direction::Right => {}
+            Direction::Up => {}
+            Direction::Down => {}
+            Direction::None => {}
+        },
         ActionType::Stand => {}
         ActionType::None => {}
     }
@@ -393,10 +545,10 @@ fn draw_world(world: &Vec<WorldTile>, actors: &Vec<Actor>, debug_messages: &Vec<
             TileType::Ground => {
                 mvaddch(tile.y, tile.x, 45);
             }
-            TileType::ClosedDoor => {
+            TileType::ClosedDoor(_, _) => {
                 mvaddch(tile.y, tile.x, 37);
             }
-            TileType::OpenedDoor => {
+            TileType::OpenedDoor(_, _) => {
                 mvaddch(tile.y, tile.x, 95);
             }
         }
@@ -415,8 +567,10 @@ fn draw_world(world: &Vec<WorldTile>, actors: &Vec<Actor>, debug_messages: &Vec<
 fn actions(
     world: &mut Vec<WorldTile>,
     actors: &mut Vec<Actor>,
+    controllers: &mut Vec<Controller>,
     collision_list: &mut Vec<(usize, usize, CollisionType)>,
-    game_state: &mut GlobalState,debug_messages: &mut Vec<String>
+    game_state: &mut GlobalState,
+    debug_messages: &mut Vec<String>,
 ) {
     for ind1 in 0..actors.len() {
         match decide_action(ind1, actors) {
@@ -426,7 +580,7 @@ fn actions(
             }
             _ => {}
         }
-        match try_action(ind1, actors, world, debug_messages) {
+        match try_action(ind1, actors, world, controllers, debug_messages) {
             Collision::Collision(ind2, ctype) => {
                 collision_list.push((ind1, ind2, ctype));
             }
@@ -523,16 +677,17 @@ fn update_world(
         debug_messages.remove(0);
     }
 }
-
-fn main() {
+fn game_loop() {
     let mut game_state = GlobalState::InGame;
-
-    initscr();
-    noecho();
-
     let mut world: Vec<WorldTile> = Vec::new();
     let mut actors: Vec<Actor> = Vec::new();
+    let mut controllers: Vec<Controller> = Vec::new();
     let mut debug_messages: Vec<String> = Vec::new();
+
+    controllers.push(Controller {
+        engaged: true,
+        guid: controller_new_guid(&controllers),
+    });
 
     actors.push(Actor {
         character: 64,
@@ -545,6 +700,19 @@ fn main() {
         moveability: 0,
         health: 5,
         attack: 1,
+        defense: 0,
+    });
+    actors.push(Actor {
+        character: 42,
+        x: 1,
+        y: 1,
+        kind: ActorType::System(0, SystemType::PhysicalLock),
+        action: ActionType::None,
+        alignment: Alignment::Neutral,
+        initutive: 127,
+        moveability: 0,
+        health: 5,
+        attack: 0,
         defense: 0,
     });
     /*    actors.push(Actor {
@@ -572,9 +740,7 @@ fn main() {
         health: 5,
         attack: 1,
         defense: 0,
-    });
-
-    */
+    });*/
 
     for i in 0..160 {
         if (i % 16) == 0 {
@@ -621,7 +787,7 @@ fn main() {
             } else {
                 world.push({
                     WorldTile {
-                        tile: TileType::ClosedDoor,
+                        tile: TileType::ClosedDoor(0, true),
                         x: (i as i32) % 16,
                         y: (i as i32) / 16,
                     }
@@ -646,9 +812,10 @@ fn main() {
         actions(
             &mut world,
             &mut actors,
+            &mut controllers,
             &mut collision_list,
             &mut game_state,
-	    &mut debug_messages
+            &mut debug_messages,
         );
 
         update_world(
@@ -662,5 +829,13 @@ fn main() {
             break;
         }
     }
+}
+
+fn main() {
+    initscr();
+    noecho();
+
+    game_loop();
+
     endwin();
 }
